@@ -734,33 +734,168 @@ function exportExcel() {
   const fi = getFoundingInputs();
   const data = calculate(fi);
   const wb = XLSX.utils.book_new();
+  const nStages = data.stages.length;
+  const nRows = data.rows.length;
 
-  const assumptions = [['Cap Table Assumptions',''],['',''],['Founding',''],['Founders',fi.founders],['Authorized Shares',fi.authShares],['Initial Option Pool',fi.initPool],['','']];
+  // ── Sheet 1: Assumptions (values, referenced by Cap Table sheet) ──
+  const assumptions = [
+    ['Cap Table Assumptions',''],
+    ['',''],
+    ['Founding',''],
+    ['Founders', fi.founders],           // B4
+    ['Authorized Shares', fi.authShares], // B5
+    ['Initial Option Pool', fi.initPool], // B6
+    ['',''],
+  ];
+  // Track row positions for each event's assumptions
+  const eventAssumptionRows = {};
   for (const e of events) {
+    const startRow = assumptions.length; // 0-indexed
     if (e.type === 'safe') {
       assumptions.push([e.name + ' (' + e.safeType.toUpperCase() + ' SAFE' + (e.mfn?' MFN':'') + ')','']);
       assumptions.push(['Amount', e.amount]);
-      assumptions.push(['Valuation Cap', e.mfn ? 'MFN' : e.valCap]);
+      assumptions.push(['Valuation Cap', e.mfn ? 'MFN (lowest cap)' : e.valCap]);
+      assumptions.push(['Discount', e.discount]);
+      assumptions.push(['Type', e.safeType === 'post' ? 'Post-Money' : 'Pre-Money']);
+      eventAssumptionRows[e.id] = { row: startRow, amountRow: startRow + 1, capRow: startRow + 2 };
     } else {
       assumptions.push([e.name + ' (Equity Round)','']);
       assumptions.push(['Pre-Money Valuation', e.preMoney]);
       assumptions.push(['Amount Raised', e.amount]);
-      assumptions.push(['Option Pool (post)', e.poolRefresh]);
+      assumptions.push(['Option Pool Target', e.poolRefresh]);
+      assumptions.push(['Pool Sizing', e.poolPreMoney ? 'Pre-Money (standard)' : 'Post-Money']);
+      eventAssumptionRows[e.id] = { row: startRow, preMoneyRow: startRow + 1, amountRow: startRow + 2, poolRow: startRow + 3 };
     }
     assumptions.push(['','']);
   }
-  assumptions.push(['Key Metrics',''],['Total Raised',data.totalRaised],['Founder Dilution',data.founderDilution]);
 
   const ws1 = XLSX.utils.aoa_to_sheet(assumptions);
-  ws1['!cols'] = [{wch:32},{wch:18}];
+  // Format percentage cells
+  const pctFmt = '0.0%';
+  const curFmt = '#,##0';
+  ws1['B6'] = { v: fi.initPool, t: 'n', z: pctFmt };
+  for (const e of events) {
+    const info = eventAssumptionRows[e.id];
+    if (e.type === 'safe') {
+      const amtCell = XLSX.utils.encode_cell({r: info.amountRow, c: 1});
+      ws1[amtCell] = { v: e.amount, t: 'n', z: '$#,##0' };
+      if (!e.mfn) {
+        const capCell = XLSX.utils.encode_cell({r: info.capRow, c: 1});
+        ws1[capCell] = { v: e.valCap, t: 'n', z: '$#,##0' };
+      }
+      const discCell = XLSX.utils.encode_cell({r: info.capRow + 1, c: 1});
+      ws1[discCell] = { v: e.discount, t: 'n', z: pctFmt };
+    } else {
+      const pmCell = XLSX.utils.encode_cell({r: info.preMoneyRow, c: 1});
+      ws1[pmCell] = { v: e.preMoney, t: 'n', z: '$#,##0' };
+      const amtCell = XLSX.utils.encode_cell({r: info.amountRow, c: 1});
+      ws1[amtCell] = { v: e.amount, t: 'n', z: '$#,##0' };
+      const poolCell = XLSX.utils.encode_cell({r: info.poolRow, c: 1});
+      ws1[poolCell] = { v: e.poolRefresh, t: 'n', z: pctFmt };
+    }
+  }
+  ws1['!cols'] = [{wch:32},{wch:20}];
   XLSX.utils.book_append_sheet(wb, ws1, 'Assumptions');
 
-  const header = ['Stakeholder', ...data.stages.map(s => s+' (Shares)'), ...data.stages.map(s => s+' (%)')];
-  const capRows = data.rows.map(r => [r.name, ...r.shares, ...r.pct]);
-  capRows.push(['Total', ...data.totals, ...data.totals.map(()=>1)]);
-  const ws2 = XLSX.utils.aoa_to_sheet([header, ...capRows]);
-  ws2['!cols'] = Array(header.length).fill({wch:16});
-  XLSX.utils.book_append_sheet(wb, ws2, 'Cap Table');
+  // ── Sheet 2: Cap Table (Shares) — values with SUM formulas ──
+  const sharesHeader = ['Stakeholder', ...data.stages];
+  const sharesSheet = [sharesHeader];
+  for (const r of data.rows) {
+    sharesSheet.push([r.name, ...r.shares]);
+  }
+  // Total row with SUM formulas
+  const totalRow = ['Total'];
+  for (let col = 0; col < nStages; col++) {
+    totalRow.push(null); // placeholder, will set formula
+  }
+  sharesSheet.push(totalRow);
+
+  const ws2 = XLSX.utils.aoa_to_sheet(sharesSheet);
+  // Add SUM formulas for the Total row
+  const totalRowIdx = nRows + 1; // 0-indexed: header=0, rows=1..nRows, total=nRows+1
+  for (let col = 0; col < nStages; col++) {
+    const colLetter = XLSX.utils.encode_col(col + 1); // +1 because col 0 is Stakeholder
+    const firstDataRow = 2; // row 1 in 1-indexed is header, row 2 is first data
+    const lastDataRow = nRows + 1; // 1-indexed
+    const cellAddr = XLSX.utils.encode_cell({r: totalRowIdx, c: col + 1});
+    ws2[cellAddr] = { t: 'n', f: `SUM(${colLetter}${firstDataRow}:${colLetter}${lastDataRow})`, z: '#,##0' };
+  }
+  // Format share cells as numbers with commas
+  for (let r = 1; r <= nRows; r++) {
+    for (let c = 1; c <= nStages; c++) {
+      const addr = XLSX.utils.encode_cell({r, c});
+      if (ws2[addr]) ws2[addr].z = '#,##0';
+    }
+  }
+  ws2['!cols'] = [{wch:22}, ...Array(nStages).fill({wch:16})];
+  XLSX.utils.book_append_sheet(wb, ws2, 'Shares');
+
+  // ── Sheet 3: Cap Table (%) — formulas referencing Shares sheet ──
+  const pctHeader = ['Stakeholder', ...data.stages];
+  const pctSheet = [pctHeader];
+  for (let r = 0; r < nRows; r++) {
+    pctSheet.push([data.rows[r].name]);
+  }
+  pctSheet.push(['Total']);
+
+  const ws3 = XLSX.utils.aoa_to_sheet(pctSheet);
+  // Ownership % = Shares!cell / Shares!TotalCell (formula)
+  const totalRow1 = nRows + 2; // 1-indexed row of the Total in Shares sheet
+  for (let r = 0; r < nRows; r++) {
+    for (let c = 0; c < nStages; c++) {
+      const colLetter = XLSX.utils.encode_col(c + 1);
+      const dataRow1 = r + 2; // 1-indexed
+      const cellAddr = XLSX.utils.encode_cell({r: r + 1, c: c + 1});
+      const sharesRef = `Shares!${colLetter}${dataRow1}`;
+      const totalRef = `Shares!${colLetter}${totalRow1}`;
+      ws3[cellAddr] = { t: 'n', f: `IF(${totalRef}=0,"--",${sharesRef}/${totalRef})`, z: pctFmt };
+    }
+  }
+  // Total row: SUM of percentages (should equal 100%)
+  const pctTotalRowIdx = nRows + 1;
+  for (let c = 0; c < nStages; c++) {
+    const colLetter = XLSX.utils.encode_col(c + 1);
+    const cellAddr = XLSX.utils.encode_cell({r: pctTotalRowIdx, c: c + 1});
+    ws3[cellAddr] = { t: 'n', f: `SUM(${colLetter}2:${colLetter}${nRows + 1})`, z: pctFmt };
+  }
+  ws3['!cols'] = [{wch:22}, ...Array(nStages).fill({wch:16})];
+  XLSX.utils.book_append_sheet(wb, ws3, 'Ownership %');
+
+  // ── Sheet 4: Summary — key metrics with formulas ──
+  const summary = [
+    ['Key Metrics', ''],
+    ['', ''],
+    ['Total Raised', { t: 'n', v: data.totalRaised, z: '$#,##0' }],
+    ['Latest Post-Money Valuation', { t: 'n', v: data.lastPostMoney, z: '$#,##0' }],
+    ['', ''],
+    ['Per-Round Breakdown', ''],
+  ];
+  // Add PPS for each equity round
+  for (const eq of data.equityResults) {
+    summary.push([eq.name, '']);
+    summary.push(['  Post-Money Valuation', { t: 'n', v: eq.postMoney, z: '$#,##0' }]);
+    summary.push(['  Price per Share', { t: 'n', v: eq.pps, z: '$#,##0.0000' }]);
+    summary.push(['  New Shares Issued', { t: 'n', v: eq.shares, z: '#,##0' }]);
+    summary.push(['', '']);
+  }
+  // Founder dilution — reference Ownership % sheet
+  summary.push(['Founder Dilution', '']);
+  const lastStageCol = XLSX.utils.encode_col(nStages); // last stage column in Ownership %
+  summary.push(['  Founder 1 final ownership', { t: 'n', f: `'Ownership %'!${lastStageCol}2`, z: pctFmt }]);
+  summary.push(['  Total dilution from founding', { t: 'n', f: `1-'Ownership %'!${lastStageCol}2/'Ownership %'!B2`, z: pctFmt }]);
+
+  const ws4rows = summary.map(row => [row[0], row[1] && typeof row[1] === 'object' ? null : (row[1] || '')]);
+  const ws4 = XLSX.utils.aoa_to_sheet(ws4rows);
+  // Now set the formatted/formula cells
+  for (let r = 0; r < summary.length; r++) {
+    const val = summary[r][1];
+    if (val && typeof val === 'object') {
+      const addr = XLSX.utils.encode_cell({r, c: 1});
+      ws4[addr] = val;
+    }
+  }
+  ws4['!cols'] = [{wch:32},{wch:20}];
+  XLSX.utils.book_append_sheet(wb, ws4, 'Summary');
 
   XLSX.writeFile(wb, 'Cap_Table_Model.xlsx');
 }
