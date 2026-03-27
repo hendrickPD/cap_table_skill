@@ -797,7 +797,13 @@ function copyInstall() {
 // ───────────────── INIT ─────────────────
 document.querySelectorAll('input[type=range]').forEach(el => el.addEventListener('input', recalc));
 
-// Default: just Series A, no SAFEs
+// Default scenario: Pre-Seed SAFE → YC → Demo Day SAFE → Series A
+addSafe({ name: 'Pre-Seed SAFE', safeType: 'post', amount: 1000000, valCap: 10000000 });
+// Add YC inline (not via toggle, to control ordering)
+events.push({ id: ++evIdCounter, type: 'safe', name: '$125K for 7%', safeType: 'post', amount: 125000, valCap: 1785714, mfn: false, discount: 0, isYC: true });
+events.push({ id: ++evIdCounter, type: 'safe', name: '$375K MFN', safeType: 'post', amount: 375000, valCap: 0, mfn: true, discount: 0, isYC: true });
+$('ycDealToggle').checked = true;
+addSafe({ name: 'Demo Day SAFE', safeType: 'post', amount: 2000000, valCap: 15000000 });
 addEquity({ name: 'Series A', preMoney: 25000000, amount: 8000000, poolRefresh: 0.10 });
 </script>
 </body>
