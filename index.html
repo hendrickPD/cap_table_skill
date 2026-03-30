@@ -23,9 +23,15 @@ body { font-family: 'Inter', system-ui, sans-serif; background: #f8f9fa; color: 
 .install-bar { display: flex; align-items: center; gap: 0.5rem; margin-top: 1rem; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 0.5rem 0.75rem; max-width: 720px; margin-left: auto; margin-right: auto; }
 .install-text { color: #94a3b8; font-size: 0.75rem; white-space: nowrap; flex-shrink: 0; }
 .install-cmd { color: #a5b4fc; font-size: 0.7rem; background: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
-.install-copy { flex-shrink: 0; padding: 0.3rem 0.65rem; font-size: 0.75rem; border: 1px solid rgba(255,255,255,0.2); border-radius: 5px; background: rgba(255,255,255,0.08); color: #fff; cursor: pointer; transition: all 0.15s; font-weight: 500; }
-.install-copy:hover { background: rgba(255,255,255,0.15); }
-.install-copy.copied { background: #22c55e; border-color: #22c55e; }
+.install-copy { flex-shrink: 0; padding: 0.3rem 0.75rem; font-size: 0.78rem; border: none; border-radius: 5px; background: #f59e0b; color: #000; cursor: pointer; transition: opacity 0.15s; font-weight: 600; }
+.install-copy:hover { opacity: 0.85; }
+.install-copy.copied { background: #22c55e; color: #fff; }
+.header-actions { display: flex; justify-content: center; gap: 0.5rem; margin-top: 0.75rem; }
+.btn-export { display: flex; align-items: center; gap: 0.3rem; padding: 0.4rem 0.85rem; border: none; border-radius: 6px; font-size: 0.78rem; font-weight: 600; cursor: pointer; transition: opacity 0.15s; }
+.btn-export:hover { opacity: 0.85; }
+.btn-excel-h { background: #16a34a; color: #fff; }
+.btn-pdf-h { background: #dc2626; color: #fff; }
+.btn-icon { font-size: 0.85rem; }
 
 .container { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
 
@@ -75,14 +81,6 @@ body { font-family: 'Inter', system-ui, sans-serif; background: #f8f9fa; color: 
 .yc-toggle input[type=checkbox] { accent-color: #f59e0b; width: 15px; height: 15px; cursor: pointer; }
 .yc-toggle-label { color: #f59e0b; font-size: 0.8rem; font-weight: 600; }
 
-/* Export bar */
-.export-bar { display: flex; gap: 0.75rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
-.export-bar button { padding: 0.6rem 1.25rem; border: none; border-radius: 8px; font-weight: 600; font-size: 0.85rem; cursor: pointer; transition: transform 0.1s, box-shadow 0.15s; }
-.export-bar button:active { transform: scale(0.97); }
-.btn-excel { background: #22c55e; color: #fff; }
-.btn-excel:hover { box-shadow: 0 4px 12px rgba(34,197,94,0.4); }
-.btn-pdf { background: #ef4444; color: #fff; }
-.btn-pdf:hover { box-shadow: 0 4px 12px rgba(239,68,68,0.4); }
 
 /* Metrics strip */
 .metrics-strip { display: flex; gap: 0; margin-bottom: 1.5rem; background: #fff; border-radius: 10px; overflow: hidden; border: 1px solid #e2e8f0; }
@@ -120,7 +118,7 @@ tbody tr.total-row { font-weight: 700; background: #f1f5f9; }
 .footer a { color: #6366f1; text-decoration: none; }
 
 @media (max-width: 768px) { .charts-grid { grid-template-columns: 1fr; } .control-grid { grid-template-columns: 1fr; } }
-@media print { .controls, .export-bar { display: none !important; } body { background: #fff; } }
+@media print { .controls, .header-actions { display: none !important; } body { background: #fff; } }
 </style>
 </head>
 <body>
@@ -134,9 +132,13 @@ tbody tr.total-row { font-weight: 700; background: #f1f5f9; }
   <h1 id="companyName">Cap Table Planner</h1>
   <p>Founding &rarr; SAFEs &rarr; Series A</p>
   <div class="install-bar">
-    <span class="install-text">Install as Claude Code skill:</span>
+    <span class="install-text">Paste into Claude Code:</span>
     <code class="install-cmd" id="installCmd">download the cap-table skill from https://raw.githubusercontent.com/hendrickPD/cap_table_skill/main/SKILL.md and install it to .claude/skills/cap-table/SKILL.md</code>
-    <button class="install-copy" onclick="copyInstall()">Copy</button>
+    <button class="install-copy" onclick="copyInstall()">Copy Install Command</button>
+  </div>
+  <div class="header-actions">
+    <button class="btn-export btn-excel-h" onclick="exportExcel()"><span class="btn-icon">&#x1F4CA;</span> Excel</button>
+    <button class="btn-export btn-pdf-h" onclick="exportPDF()"><span class="btn-icon">&#x1F4C4;</span> Export PDF</button>
   </div>
 </div>
 
@@ -179,11 +181,6 @@ tbody tr.total-row { font-weight: 700; background: #f1f5f9; }
   </div>
 </div>
 
-<!-- Export -->
-<div class="export-bar">
-  <button class="btn-excel" onclick="exportExcel()">Download Excel</button>
-  <button class="btn-pdf" onclick="exportPDF()">Export PDF</button>
-</div>
 
 <div class="metrics-strip" id="metricsStrip"></div>
 
@@ -1001,10 +998,9 @@ function exportExcel() {
 function exportPDF() {
   const el = document.querySelector('.container');
   const ctrl = $('controlPanel');
-  const exp = document.querySelector('.export-bar');
-  ctrl.style.display = 'none'; exp.style.display = 'none';
+  ctrl.style.display = 'none';
   html2canvas(el, { scale: 2, useCORS: true }).then(canvas => {
-    ctrl.style.display = ''; exp.style.display = '';
+    ctrl.style.display = '';
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF('p','mm','a4');
     const pw = 210, ph = 297, iw = pw - 20;
