@@ -320,7 +320,14 @@ function editEventName(id, el) {
   inp.focus(); inp.select();
 }
 
-// Drag & drop
+// Drag & drop — only via hamburger handle
+function enableDrag(e, id) {
+  const card = e.target.closest('.event-card');
+  if (!card) return;
+  card.draggable = true;
+  card.ondragstart = function(ev) { onEvDragStart(ev, id); };
+  card.ondragend = function(ev) { onEvDragEnd(ev); card.draggable = false; card.ondragstart = null; card.ondragend = null; };
+}
 function onEvDragStart(e, id) { dragEvId = id; e.currentTarget.style.opacity = '0.5'; }
 function onEvDragEnd(e) { e.currentTarget.style.opacity = '1'; dragEvId = null; }
 function onEvDragOver(e) { e.preventDefault(); }
@@ -338,14 +345,15 @@ function onEvDrop(e, targetId) {
 function renderEvents() {
   const list = $('eventList');
   list.innerHTML = events.map(e => {
-    const dragAttrs = `draggable="true" ondragstart="onEvDragStart(event,${e.id})" ondragend="onEvDragEnd(event)" ondragover="onEvDragOver(event)" ondrop="onEvDrop(event,${e.id})"`;
+    const dropAttrs = `ondragover="onEvDragOver(event)" ondrop="onEvDrop(event,${e.id})"`;
+    const handleAttrs = `onmousedown="enableDrag(event,${e.id})"`;
 
     // ── YC SAFE (read-only) ──
     if (e.isYC) {
       const capLabel = e.mfn ? 'Uncapped MFN (converts at lowest cap of other SAFEs)' : 'Post-money cap: ' + fmt(e.valCap) + ' (7%)';
-      return `<div class="event-card yc-card" ${dragAttrs}>
+      return `<div class="event-card yc-card" data-ev-id="${e.id}" ${dropAttrs}>
         <div class="ev-header">
-          <span class="ev-drag">&#x2630;</span>
+          <span class="ev-drag" ${handleAttrs}>&#x2630;</span>
           <span class="ev-name yc-badge">${e.name}</span>
           <span class="ev-type-tag safe-tag">SAFE</span>
           <span style="color:#94a3b8;font-size:0.7rem;margin-left:auto">Fixed</span>
@@ -359,9 +367,9 @@ function renderEvents() {
 
     // ── SAFE ──
     if (e.type === 'safe') {
-      return `<div class="event-card" ${dragAttrs}>
+      return `<div class="event-card" data-ev-id="${e.id}" ${dropAttrs}>
         <div class="ev-header">
-          <span class="ev-drag">&#x2630;</span>
+          <span class="ev-drag" ${handleAttrs}>&#x2630;</span>
           <span class="ev-name" onclick="editEventName(${e.id},this)" title="Click to rename">${e.name}</span>
           <span class="ev-type-tag safe-tag">SAFE</span>
           <button class="ev-remove" onclick="removeEvent(${e.id})">&times;</button>
@@ -400,9 +408,9 @@ function renderEvents() {
     }
 
     // ── EQUITY ROUND ──
-    return `<div class="event-card equity-card" ${dragAttrs}>
+    return `<div class="event-card equity-card" data-ev-id="${e.id}" ${dropAttrs}>
       <div class="ev-header">
-        <span class="ev-drag">&#x2630;</span>
+        <span class="ev-drag" ${handleAttrs}>&#x2630;</span>
         <span class="ev-name equity-badge" onclick="editEventName(${e.id},this)" title="Click to rename">${e.name}</span>
         <span class="ev-type-tag equity-tag">Equity</span>
         <button class="ev-remove" onclick="removeEvent(${e.id})">&times;</button>
