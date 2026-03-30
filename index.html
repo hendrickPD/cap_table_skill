@@ -27,9 +27,7 @@ body { font-family: 'Inter', system-ui, sans-serif; background: #f8f9fa; color: 
 .btn-excel-h { background: #16a34a; color: #fff; }
 .btn-pdf-h { background: #dc2626; color: #fff; }
 .install-section { margin-top: 0.6rem; }
-.install-label { color: #f59e0b; font-size: 0.8rem; font-weight: 500; }
-.install-text { color: #94a3b8; font-size: 0.75rem; margin: 0.15rem 0 0.4rem; line-height: 1.4; }
-.install-copy { padding: 0.3rem 0.75rem; font-size: 0.78rem; border: 1px solid rgba(245,158,11,0.4); border-radius: 5px; background: transparent; color: #f59e0b; cursor: pointer; transition: all 0.15s; font-weight: 600; }
+.install-copy { padding: 0.35rem 0.85rem; font-size: 0.78rem; border: 1px solid rgba(245,158,11,0.4); border-radius: 5px; background: transparent; color: #f59e0b; cursor: pointer; transition: all 0.15s; font-weight: 600; }
 .install-copy:hover { background: rgba(245,158,11,0.1); }
 .install-copy.copied { background: #22c55e; color: #fff; border-color: #22c55e; }
 
@@ -138,9 +136,8 @@ tbody tr.total-row { font-weight: 700; background: #f1f5f9; }
     </div>
   </div>
   <div class="install-section">
-    <span class="install-label">Install as a Claude Code skill</span>
-    <p class="install-text">Paste into Claude Code: "<span id="installCmd">download the cap-table skill from https://raw.githubusercontent.com/hendrickPD/cap_table_skill/main/SKILL.md and install it to .claude/skills/cap-table/SKILL.md</span>"</p>
-    <button class="install-copy" onclick="copyInstall()">Copy Install Command</button>
+    <button class="install-copy" onclick="copyInstall()">Copy to Claude Code to install</button>
+    <span id="installCmd" style="display:none">download the cap-table skill from https://raw.githubusercontent.com/hendrickPD/cap_table_skill/main/SKILL.md and install it to .claude/skills/cap-table/SKILL.md</span>
   </div>
 </div>
 </div>
