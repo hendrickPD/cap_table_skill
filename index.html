@@ -84,16 +84,18 @@ body { font-family: 'Inter', system-ui, sans-serif; background: #f8f9fa; color: 
 .btn-pdf { background: #ef4444; color: #fff; }
 .btn-pdf:hover { box-shadow: 0 4px 12px rgba(239,68,68,0.4); }
 
-/* KPI Cards */
-.kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0.75rem; margin-bottom: 1.5rem; }
-.kpi-card { background: #fff; border-radius: 10px; padding: 1rem; border-left: 4px solid #6366f1; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
-.kpi-card .kpi-label { font-size: 0.75rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.25rem; }
-.kpi-card .kpi-value { font-size: 1.35rem; font-weight: 700; color: #1e293b; }
-.kpi-card .kpi-sub { font-size: 0.75rem; color: #94a3b8; margin-top: 0.15rem; }
-.kpi-card.green { border-left-color: #22c55e; }
-.kpi-card.amber { border-left-color: #f59e0b; }
-.kpi-card.purple { border-left-color: #8b5cf6; }
-.kpi-card.blue { border-left-color: #3b82f6; }
+/* Metrics strip */
+.metrics-strip { display: flex; gap: 0; margin-bottom: 1.5rem; background: #fff; border-radius: 10px; overflow: hidden; border: 1px solid #e2e8f0; }
+.metric { flex: 1; padding: 1rem 1.25rem; position: relative; }
+.metric:not(:last-child)::after { content: ''; position: absolute; right: 0; top: 20%; height: 60%; width: 1px; background: #e2e8f0; }
+.metric .metric-label { font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.2rem; }
+.metric .metric-value { font-size: 1.4rem; font-weight: 700; color: #1e293b; line-height: 1.2; }
+.metric .metric-sub { font-size: 0.72rem; color: #94a3b8; margin-top: 0.2rem; }
+.metric .metric-pctile { display: inline-block; font-size: 0.65rem; font-weight: 600; padding: 1px 5px; border-radius: 3px; margin-top: 0.3rem; }
+.metric .metric-pctile.top { background: #dcfce7; color: #166534; }
+.metric .metric-pctile.mid { background: #fef9c3; color: #854d0e; }
+.metric .metric-pctile.low { background: #f1f5f9; color: #64748b; }
+@media (max-width: 768px) { .metrics-strip { flex-direction: column; } .metric:not(:last-child)::after { width: 100%; height: 1px; top: auto; bottom: 0; left: 10%; right: 10%; width: 80%; } }
 
 /* Tables */
 .table-wrap { background: #fff; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); overflow-x: auto; margin-bottom: 1.5rem; }
@@ -183,7 +185,7 @@ tbody tr.total-row { font-weight: 700; background: #f1f5f9; }
   <button class="btn-pdf" onclick="exportPDF()">Export PDF</button>
 </div>
 
-<div class="kpi-grid" id="kpiGrid"></div>
+<div class="metrics-strip" id="metricsStrip"></div>
 
 <div class="table-wrap">
   <h2>Ownership Waterfall</h2>
@@ -625,24 +627,94 @@ function updateLabels(fi, data) {
   }
 }
 
+// ───────────────── PERCENTILE BENCHMARKS ─────────────────
+// Source: Carta State of Pre-Seed/Seed 2025, CB Insights Q2 2025
+// Interpolated percentile curves for total SAFE raised and seed valuation caps
+function getPercentile(value, breakpoints) {
+  // breakpoints: sorted [{v, p}] where v=value, p=percentile (0-100)
+  if (value <= breakpoints[0].v) return breakpoints[0].p;
+  if (value >= breakpoints[breakpoints.length-1].v) return breakpoints[breakpoints.length-1].p;
+  for (let i = 0; i < breakpoints.length - 1; i++) {
+    if (value >= breakpoints[i].v && value <= breakpoints[i+1].v) {
+      const ratio = (value - breakpoints[i].v) / (breakpoints[i+1].v - breakpoints[i].v);
+      return Math.round(breakpoints[i].p + ratio * (breakpoints[i+1].p - breakpoints[i].p));
+    }
+  }
+  return 50;
+}
+
+// Total pre-seed/seed SAFE raised (US, 2025)
+const raisedBP = [
+  {v:250000,p:10},{v:500000,p:20},{v:1000000,p:35},{v:2000000,p:50},
+  {v:3100000,p:60},{v:4000000,p:70},{v:5000000,p:80},{v:8000000,p:90},{v:15000000,p:98}
+];
+// Post-money SAFE valuation cap (US, 2025)
+const capBP = [
+  {v:3000000,p:5},{v:5000000,p:15},{v:8000000,p:25},{v:10000000,p:40},
+  {v:15000000,p:55},{v:20000000,p:65},{v:30000000,p:80},{v:50000000,p:90},{v:100000000,p:98}
+];
+
+function pctileTag(pctile) {
+  const cls = pctile >= 70 ? 'top' : pctile >= 40 ? 'mid' : 'low';
+  return `<span class="metric-pctile ${cls}">${pctile}th percentile</span>`;
+}
+
 function renderKPIs(fi, data) {
   const safeCount = events.filter(e => e.type === 'safe').length;
-  const equityCount = events.filter(e => e.type === 'equity').length;
-  const cards = [
-    { label: 'Total Raised', value: fmt(data.totalRaised), sub: safeCount + ' SAFE' + (safeCount !== 1 ? 's' : '') + ' + ' + equityCount + ' round' + (equityCount !== 1 ? 's' : ''), cls: 'green' },
-    { label: 'Latest Valuation', value: data.lastPostMoney > 0 ? fmt(data.lastPostMoney) : '--', sub: 'Post-money', cls: 'purple' },
-    { label: 'Founder Dilution', value: events.length > 0 ? fmtPct(data.founderDilution) : '--', sub: 'Per founder, cumulative', cls: 'amber' },
-  ];
-  // Add PPS for each equity round
-  for (const eq of data.equityResults) {
-    cards.push({ label: eq.name + ' PPS', value: '$' + eq.pps.toFixed(4), sub: fmtShares(eq.shares) + ' shares', cls: 'blue' });
+  const totalSafeRaised = events.filter(e => e.type === 'safe').reduce((s,e) => s + e.amount, 0);
+
+  // Highest non-MFN, non-YC cap for benchmarking
+  const cappedSafes = events.filter(e => e.type === 'safe' && !e.mfn && !e.isYC && e.valCap > 0);
+  const highestCap = cappedSafes.length > 0 ? Math.max(...cappedSafes.map(e => e.valCap)) : 0;
+
+  const raisedPctile = totalSafeRaised > 0 ? getPercentile(totalSafeRaised, raisedBP) : null;
+  const capPctile = highestCap > 0 ? getPercentile(highestCap, capBP) : null;
+
+  let html = '';
+
+  // Total raised
+  html += `<div class="metric">
+    <div class="metric-label">Total Raised</div>
+    <div class="metric-value">${fmt(data.totalRaised)}</div>
+    <div class="metric-sub">${safeCount} SAFE${safeCount!==1?'s':''} + ${events.filter(e=>e.type==='equity').length} round${events.filter(e=>e.type==='equity').length!==1?'s':''}</div>
+  </div>`;
+
+  // SAFE raised + percentile
+  if (totalSafeRaised > 0) {
+    html += `<div class="metric">
+      <div class="metric-label">SAFE Capital</div>
+      <div class="metric-value">${fmt(totalSafeRaised)}</div>
+      ${raisedPctile !== null ? pctileTag(raisedPctile) : ''}
+    </div>`;
   }
-  $('kpiGrid').innerHTML = cards.map(c => `
-    <div class="kpi-card ${c.cls}">
-      <div class="kpi-label">${c.label}</div>
-      <div class="kpi-value">${c.value}</div>
-      <div class="kpi-sub">${c.sub}</div>
-    </div>`).join('');
+
+  // Highest cap + percentile
+  if (highestCap > 0) {
+    html += `<div class="metric">
+      <div class="metric-label">Highest Cap</div>
+      <div class="metric-value">${fmt(highestCap)}</div>
+      ${capPctile !== null ? pctileTag(capPctile) : ''}
+    </div>`;
+  }
+
+  // Founder dilution
+  html += `<div class="metric">
+    <div class="metric-label">Founder Dilution</div>
+    <div class="metric-value">${events.length > 0 ? fmtPct(data.founderDilution) : '--'}</div>
+    <div class="metric-sub">Per founder, cumulative</div>
+  </div>`;
+
+  // PPS for latest equity round
+  if (data.equityResults.length > 0) {
+    const eq = data.equityResults[data.equityResults.length - 1];
+    html += `<div class="metric">
+      <div class="metric-label">${eq.name} PPS</div>
+      <div class="metric-value">$${eq.pps.toFixed(4)}</div>
+      <div class="metric-sub">${fmtShares(eq.shares)} shares</div>
+    </div>`;
+  }
+
+  $('metricsStrip').innerHTML = html;
 }
 
 function renderCapTable(data) {
